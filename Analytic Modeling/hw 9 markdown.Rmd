@@ -1,0 +1,60 @@
+---
+title: "hw 9 markdown"
+output: word_document
+date: "2024-10-23"
+---
+
+```{r, echo = FALSE}
+#housekeeping
+library(pacman)
+pacman::p_load(dplyr, FrF2, tidyverse, magrittr, tidyr, fpp3, caTools, reshape2, psych, fBasics, kableExtra, reticulate)
+```
+
+Question 12.1
+Describe a situation or problem from your job, everyday life, current events, etc., for which a design of experiments approach would be appropriate.
+
+A situation in everyday life where a design of experiments approach would be useful is optimizing a workout routine for muscle growth. Key factors include workout frequency (3, 4, or 5 days per week), exercise type (free weights, machines, or bodyweight exercises), rest time (30, 60, or 90 seconds), and protein intake (100g, 150g, or 200g per day). Rather than experimenting with each variable one by one, DOE allows me to test different combinations of these factors simultaneously.
+
+By systematically varying these inputs and measuring the results, I can efficiently determine the optimal combination for maximizing muscle growth. This structured approach provides more reliable and faster insights than random trial and error, allowing me to optimize my routine effectively.
+
+Question 12.2
+To determine the value of 10 different yes/no features to the market value of a house (large yard, solar roof, etc.), a real estate agent plans to survey 50 potential buyers, showing a fictitious house with different combinations of features. To reduce the survey size, the agent wants to show just 16 fictitious houses. Use R’s FrF2 function (in the FrF2 package) to find a fractional factorial design for this experiment: what set of features should each of the 16 fictitious houses have? Note: the output of FrF2 is “1” (include) or “-1” (don’t include) for each feature.
+
+Here is the implementation of a fractional factorial design for 16 open houses, utilizing 10 features. The output below indicates the specific features that each house should highlight for prospective buyers.
+
+```{r}
+set.seed(123)
+
+houses <- FrF2(
+  nruns=16, nfactors=10, 
+  factor.names = c(
+    'Large Yard', 'Pool', 'Barrel Tile', 'Long Driveway', 'Multi Car Garage',
+    'More than 3 Bedrooms', 'Modern Kitchen', 'Gated Community', 'Gazebo', 'HOA'
+    ),
+  default.levels = c('Yes', 'No')
+  ) %>% 
+  as_tibble() %>% 
+  rownames_to_column('House')
+
+
+kable(houses)
+```
+
+Question 13.1
+For each of the following distributions, give an example of data that you would expect to follow this distribution (besides the examples already discussed in class).
+a. Binomial b. Geometric c. Poisson d. Exponential e. Weibull
+
+For each of the following distributions, give an example of data that you would expect to follow this distribution (besides the examples already discussed in class). 
+
+a. Binomial - If you ask someone on a date, you'll either have a date or you won't
+
+b. Geometric - Suppose you're making phone calls to friends until you find one who answers. The geometric distribution would represent the number of calls you need to make before the first person picks up the phone
+
+c. Poisson - The number of cars passing through a toll booth between 1 pm and 2 pm on a random day
+
+d. Exponential - The amount of time it takes for your internet to disconnect after it has been running continuously without interruption 
+e. Weibull - Predicting the time until a light bulb burns out, where initially some bulbs fail early, most last a relatively long time, and then more start failing as they reach the end of their expected lifespan
+
+Question 13.2
+In this problem you, can simulate a simplified airport security system at a busy airport. Passengers arrive according to a Poisson distribution with λ1 = 5 per minute (i.e., mean interarrival rate 1 = 0.2 minutes) to the ID/boarding-pass check queue, where there are several servers who each have exponential service time with mean rate 2 = 0.75 minutes. [Hint: model them as one block that has more than one resource.] After that, the passengers are assigned to the shortest of the several personal-check queues, where they go through the personal scanner (time is uniformly distributed between 0.5 minutes and 1 minute).
+Use the Arena software (PC users) or Python with SimPy (PC or Mac users) to build a simulation of the system, and then vary the number of ID/boarding-pass checkers and personal-check queues to determine how many are needed to keep average wait times below 15 minutes. [If you’re using SimPy, or if you have access to a non-student version of Arena, you can use λ1 = 50 to simulate a busier airport.]

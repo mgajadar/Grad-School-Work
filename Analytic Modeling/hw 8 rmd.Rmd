@@ -1,0 +1,273 @@
+---
+title: "Homework 8 RMD"
+output: word_document
+date: "2024-10-15"
+---
+Question 11.1
+Using the crime data set uscrime.txt from Questions 8.2, 9.1, and 10.1, build a regression model using:
+1. Stepwise regression
+2. Lasso
+3. Elastic net
+For Parts 2 and 3, remember to scale the data first – otherwise, the regression coefficients will be on
+different scales and the constraint won’t have the desired effect.
+For Parts 2 and 3, use the glmnet function in R
+
+Load Data
+```{r}
+#housekeeping
+library(pacman)
+pacman::p_load(ggthemes, tidyverse, magrittr, TTR, tidyr, dplyr, lubridate, ggplot2, 
+               plotly, fpp2, forecast, caTools, reshape2, psych, graphics, Matrix, 
+               corrplot, mltools, fBasics, kableExtra, DMwR, caret, gridExtra, leaps, 
+               MASS, glmnet, rio)
+
+crime <- import("D:/Users/Marcus/Desktop/grad school/FALL 2024/Analytic Modeling/hw 5/uscrime.txt")
+```
+
+Data exploration and Simple visualization
+```{r}
+#Statistical Summary of original data
+df_unistats<- basicStats(crime)[c("Minimum", "Maximum", "1. Quartile", "3. Quartile", "Mean", "Median",
+                               "Variance", "Stdev", "Skewness", "Kurtosis"), ] %>% t() %>% as.data.frame()
+
+kable(df_unistats)
+```
+
+```{r}
+# Visualizations via Box plots 
+meltData <- melt(crime)
+
+p <- ggplot(meltData, aes(factor(variable), value)) 
+p + geom_boxplot() + facet_wrap(~variable, scale="free")+theme_economist()+scale_colour_economist()
+```
+
+```{r}
+#density plots of original data
+density <- crime %>%
+  gather() %>%                         
+  ggplot(aes(value)) +                 
+    facet_wrap(~ key, scales = "free") +
+    geom_density()+theme_economist()+scale_colour_economist()
+density
+
+```
+
+Stepwise Regression
+```{r}
+# Set seed for reproducibility
+set.seed(123)
+#Generate a random sample of 90% of the rows
+random_row<- sample(1:nrow(crime ),as.integer(0.9*nrow(crime),replace=F))
+traindata = crime[random_row,]
+#Assign the test data set to the remaining 10% of the original set
+testdata = crime [-random_row,]
+# Set up repeated k-fold cross-validation
+train.control <- trainControl(method = "cv", number = 10)
+# Stepwise regression model
+# Train the model
+step.model <- train(Crime ~., data = traindata ,
+                    method = "lmStepAIC", 
+                    trControl = train.control,trace=F
+                    )
+#model accuracy
+step.model$results
+```
+Best Model # of Predictors Combo
+
+```{r}
+# Final model coefficients
+step.model$finalModel
+```
+
+```{r}
+# Summary of the model
+summary(step.model$finalModel)
+```
+
+Evaluation on train model
+```{r}
+#setting a "full model" 
+full.model <- lm(Crime ~ M + Ed + Po1 + U2+M.F+U1+U2+ Ineq + Prob,data = traindata) # on train data set
+# Stepwise regression model- in both directions
+stepfinal.model <- stepAIC(full.model, direction = "both", 
+                      trace = FALSE,k=2)
+#model accuracy
+summary(stepfinal.model)
+```
+
+lesser significant predictors 
+```{r}
+#setting a "smaller leaner model" 
+full1.model <- lm(Crime ~ M + Ed + Po1 + Ineq + Prob,data = (traindata)) # on train data set
+# Stepwise regression model- in both directions
+stepfinal1.model <- stepAIC(full1.model, direction = "both", 
+                      trace = FALSE,k=2)
+#model accuracy
+summary(stepfinal1.model)
+```
+
+evaluating on train and test data 
+```{r}
+#create the evaluation metrics function
+eval_metrics = function(model, crime, predictions, target){
+    resids = crime[,target] - predictions
+    resids2 = resids**2
+    N = length(predictions)
+    r2 = as.character(round(summary(model)$r.squared, 2))
+    adj_r2 = as.character(round(summary(model)$adj.r.squared, 2))
+    print(adj_r2) #Adjusted R-squared
+    print(as.character(round(sqrt(sum(resids2)/N), 2))) #RMSE
+}
+predictions.train = predict(stepfinal1.model, newdata = (traindata))
+predictions.test = predict(stepfinal1.model, newdata = testdata)
+#model accuracy
+eval_metrics(stepfinal1.model, traindata, predictions.train, target = 'Crime')
+```
+
+```{r}
+eval_metrics(stepfinal1.model, testdata, predictions.test, target = 'Crime')
+```
+
+Observation #1:
+
+Cross-validation to filter out unwanted predictors and fed that into our Stepwise (both directions) on training data
+
+The R-squares for both training and test data is the same while RSME was surprisingly better in test set than training
+
+Lasso:
+```{r}
+#scale data set
+xtrain<-scale(as.matrix(traindata)[,-16], center = TRUE, scale = TRUE)
+ytrain<-scale(as.matrix(traindata)[,16], center = TRUE, scale = TRUE)
+xtest<-scale(as.matrix(testdata)[,-16], center = TRUE, scale = TRUE)
+ytest<-scale(as.matrix(testdata)[,16], center = TRUE, scale = TRUE)
+```
+
+defining the model
+```{r}
+lasso_cv <- cv.glmnet(xtrain, ytrain, family="gaussian", alpha=1)
+plot(lasso_cv)#plot lasso cv
+```
+
+```{r}
+coef(lasso_cv)
+```
+
+```{r}
+best_lambda <- lasso_cv$lambda.min
+cat(best_lambda)
+```
+
+Model using best lambda: 
+```{r}
+lasso_mod = glmnet(xtrain, ytrain, family = "gaussian", alpha = 1, lambda = best_lambda)
+coef(lasso_mod)
+```
+
+Prediction and evaluations (LASSO)
+```{r}
+# Compute R^2 from true and predicted values
+eval_results <- function(true, predicted, crime) {
+  SSE <- sum((predicted - true)^2)
+  SST <- sum((true - mean(true))^2)
+  R_square <- 1 - SSE / SST
+  RMSE = sqrt(SSE/nrow(crime))
+
+  
+  # Model performance metrics
+data.frame(
+  RMSE = RMSE,
+  Rsquare = R_square
+)
+  
+}
+
+# Prediction and evaluation on train data
+yhat.train = predict(lasso_mod, xtrain)
+eval_results(ytrain, yhat.train, traindata) 
+```
+
+```{r}
+# Prediction and evaluation on test data
+yhat.test = predict(lasso_mod, xtest)
+eval_results(ytest, yhat.test, testdata) 
+```
+
+Plot of lasso prediction
+```{r}
+x = 1:length(ytest)
+plot(x, ytest, ylim=c(min(yhat.test), max(ytest)), pch=20, col="purple")
+lines(x, yhat.test, lwd="1", col="pink")
+legend("topleft", legend=c("Crime", "predicted-Crime"),
+       col=c("purple", "pink"), lty=1,cex = 0.8, lwd=1, bty='n')
+```
+
+Observation #2:
+
+The optimal lambda was 0.02221254 from the plot
+
+RSME and R squares were fairly similar for both training and testing data sets and very comparable to linear regression
+
+Because Stepwise was done w/o scaling, the RSME metric cannot be compared with Lasso as its scaled. So we will be using R’s as the metric of comparison going forward. As expected Lasso’s R-square saw improvement
+
+Elastic Net:
+```{r}
+# Set training control
+train_cont <- trainControl(method = "repeatedcv",
+                              number = 10,
+                              repeats = 5,
+                              search = "random",
+                              verboseIter = F)
+
+
+# Train the model
+elastic_reg <- train(Crime ~ .,data = as.matrix(scale(traindata)),method = "glmnet",preProcess = c("center", "scale"),
+                           tuneLength = 10,#10 different combinations of values for alpha and lambda are to be tested
+                           trControl = train_cont)
+```
+
+```{r}
+# Best tuning parameter
+elastic_reg$bestTune
+```
+
+Prediction and evaluation (elastic net)
+```{r}
+# Make predictions on training set
+predictions_train <- predict(elastic_reg, xtrain)
+eval_results(ytrain, predictions_train, as.matrix(traindata)) 
+```
+
+```{r}
+# Make predictions on test set
+predictions_test <- predict(elastic_reg, xtest)
+eval_results(ytest, predictions_test, as.matrix(testdata))
+```
+
+Plot of elastic Net predition
+```{r}
+x = 1:length(ytest)
+plot(x, ytest, ylim=c(min(predictions_test), max(ytest)), pch=20, col="purple")
+lines(x, predictions_test, lwd="1", col="pink")
+legend("topleft", legend=c("Crime", "predicted-Crime"),
+       col=c("purple", "pink"), lty=1,cex = 0.8, lwd=1, bty='n')
+```
+
+Observation 3:
+
+Since there’s no definite alpha for Elastic net, using the argument tuneLength specifies that 10 different combinations of values for alpha and lambda are to be tested
+
+Based on the above iterations and output, best tuned alpha & best tuned lambda were listed above
+
+Note: Potentially better results (or worst) would’ve been gotten if I had tried out different tune length
+
+From a quality perspective, regularized R-square dropped slightly from training to test set like it should
+
+Overall, all the models performed well with decent R-squared and stable RMSE values. Strangely enough for this data set, witnessed improvements going from traditional Linear Regression to regularization models in terms of R squares
+
+
+
+
+
+
+
