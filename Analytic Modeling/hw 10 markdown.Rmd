@@ -1,0 +1,256 @@
+---
+title: "hw 10 markdown"
+output: word_document
+date: "2024-10-30"
+---
+```{r, echo = FALSE}
+#housekeeping
+library(pacman)
+pacman::p_load(rio, ggthemes, tidyverse, magrittr, TTR, tidyr, dplyr, ggplot2, plotly, fpp2, caTools, reshape2, psych, graphics, fBasics, caret, gridExtra, DAAG, rpart, randomForest, data.table, mice, MASS, kknn)
+```
+Load Data
+Attribute Information[1]:
+
+Sample code number: id number
+Clump Thickness: 1 - 10
+Uniformity of Cell Size: 1 - 10
+Uniformity of Cell Shape: 1 - 10
+Marginal Adhesion: 1 - 10
+Single Epithelial Cell Size: 1 - 10
+Bare Nuclei: 1 - 10
+Bland Chromatin: 1 - 10
+Normal Nucleoli: 1 - 10
+Mitoses: 1 - 10
+Class: (2 for benign, 4 for malignant)
+Reference 1: http://archive.ics.uci.edu/ml/datasets/Breast+Cancer+Wisconsin+%28Original%29 )
+
+```{r}
+# Read a txt file
+df<-read.table("breast-cancer-wisconsin.data.txt", stringsAsFactor = FALSE, header = F, sep = ",", na.strings="?")
+head(df,2)
+```
+
+Checking for missing data
+```{r}
+#assigning colnames to data
+colnames(df) <- c("ID", "Clump_Thickness", "Uniform_Cell_Size", "Uniform_Cell_Shape",
+                 "Marg_Adhesion", "Single_Epith_Cell_Size", "Bare_Nuclei", "Bland_Chromatin",
+                 "Normal_Nucleoli", "Mitoses", "Class")
+df$Class <- as.factor(df$Class)
+levels(df$Class) <- c(0, 1)
+summary(df)
+```
+
+```{r}
+#which column contains the missing data
+df[is.na(df$Bare_Nuclei),]
+```
+
+```{r}
+#check for % of missing observation (threshold < 5%)
+print(sprintf("Percent of missing observation = %0.3f", 16/nrow(df)*100))
+```
+
+There were 16 NAs found in the "Bare Nuclei" column, which is below the 5% threshold, making imputation an acceptable approach.
+
+Mean imputation
+
+```{r}
+#mean imputation
+df.mean<-df
+df.mean<-df.mean %>% mutate_at(vars(Bare_Nuclei),~ifelse(is.na(.x), mean(.x, na.rm = TRUE), .x))
+#check it was imputed correctly
+head(df.mean,24)
+```
+
+```{r}
+#double check if mean was calculated correctly
+mean(df.mean$Bare_Nuclei)
+```
+
+Mode imputation
+```{r}
+#found this mode function in the internet
+getmode <- function(v) {
+   uniqv <- unique(v)
+   uniqv[which.max(tabulate(match(v, uniqv)))]
+}
+df.mode<-df
+mode.result <- getmode(df.mode$Bare_Nuclei)
+print(mode.result)
+```
+
+```{r}
+#fill NA with Mode of 1s
+df.mode$Bare_Nuclei[is.na(df.mode$Bare_Nuclei)] <- mode.result
+#check it was imputed correctly
+head(df.mode,24)
+```
+
+Regression Imputation
+```{r}
+set.seed(123)
+
+newdata<-df
+missing.index<-which(is.na(newdata$Bare_Nuclei), arr.ind=TRUE)
+newdata.1 <- newdata[-missing.index,2:10]# all other predictors data points except for the missing value and response variable
+
+#Linear Model
+model <- lm(Bare_Nuclei~Clump_Thickness+Uniform_Cell_Size+Uniform_Cell_Shape+Marg_Adhesion+Single_Epith_Cell_Size+Bland_Chromatin+Normal_Nucleoli+Mitoses,data=newdata.1 )
+summary(model)
+```
+
+Variable Selection using stepwise
+```{r}
+# Fit the full model 
+full.model <- model 
+# Stepwise regression model
+step.model <- stepAIC(full.model, direction = "both", 
+                      trace = FALSE)
+summary(step.model)
+```
+
+Since regular linear regression included several insignificant predictors, stepwise regression in both directions was applied to remove these predictors and create a more streamlined model.
+
+```{r}
+# Set seed for reproducibility
+set.seed(123)
+# Set up repeated k-fold cross-validation
+train.control <- trainControl(method = "cv", number = 10)
+# Train the model
+step.model <- train(Bare_Nuclei ~., data = newdata.1 ,
+                    method = "leapBackward", 
+                    tuneGrid = data.frame(nvmax = 1:4),
+                    trControl = train.control
+                    )
+step.model$results
+```
+
+Find the best model
+```{r}
+step.model$bestTune
+```
+
+Cross-validation identified a smaller model with the lowest RMSE of 2.278 and the highest R-Squared of 0.618.
+The optimal model included four predictors: Clump_Thickness, Uniform_Cell_Shape, Marg_Adhesion, and Bland_Chromatin.
+
+Predicting the missing values
+```{r}
+predicted.missing<-predict(step.model,newdata=df[missing.index,]) 
+```
+
+Impute with regressed data points
+```{r}
+df.final.regression<-df
+
+df.final.regression[missing.index,]$Bare_Nuclei<-as.integer(predicted.missing)#make predicted values integers
+#final data with imputed regressed values
+head(df.final.regression,24)
+```
+
+Imputation with Regression + Perturbation
+```{r}
+set.seed(123)
+n <- rnorm(16, mean = predicted.missing, sd = sd(predicted.missing))#generate 16 random numbers based off missing predicted values
+n
+```
+
+```{r}
+#bounding the negative numbers to positive only
+abs(n)
+```
+
+Finally, Impute with pertubed regressed data points
+```{r}
+df.final.regression.pertubed<-df
+df.final.regression.pertubed[missing.index,]$Bare_Nuclei<-as.integer(abs(n))#make predicted values integers
+#final data with imputed  perturbed regressed values
+head(df.final.regression.pertubed,24)
+```
+
+KNN Comparisons
+```{r}
+df1<-read.table("breast-cancer-wisconsin.data.txt", stringsAsFactor = FALSE, header = F, sep = ",", na.strings="?")
+head(df1,2)
+```
+
+KNN vs Mean imputation
+```{r}
+ctrl <- trainControl(method="repeatedcv",number=10,repeats = 3)
+knn.mean <- train(x=df.mean[,1:10],y=as.factor(df.mean[,11]), method = "knn", trControl = ctrl, 
+                preProcess = c("center","scale"), tuneLength = 10)
+
+plot(knn.mean,col = "dark red",lwd=5,lty=2,cex.lab=1.25,cex.main=1.5,
+     main="Mean Imputed Dataset: Accuracy of kNN with repeated 10-fold CV",
+     xlab="Number of neighbors",
+     ylab="Accuracy of classification")
+```
+
+KNN vs Regular Regression
+```{r}
+knn.regressed <- train(x=df.final.regression[,1:10],y=as.factor(df.final.regression[,11]), method = "knn", trControl = ctrl, 
+                     preProcess = c("center","scale"), tuneLength = 10)
+
+plot(knn.regressed,col = "dark red",lwd=5,lty=2,cex.lab=1.25,cex.main=1.5,
+     main="Regression Imputed Dataset: Accuracy of kNN with repeated 10-fold CV",
+     xlab="Number of neighbors",
+     ylab="Accuracy of classification")
+```
+
+KNN vs Perturbed Regression
+```{r}
+knn.perturbreg <- train(x=df.final.regression.pertubed[,1:10],y=as.factor(df.final.regression.pertubed[,11]), method = "knn", trControl = ctrl, 
+                     preProcess = c("center","scale"), tuneLength = 10)
+
+plot(x=knn.perturbreg,col = "dark red",lwd=5,lty=2,cex.lab=1.25,cex.main=1.5,
+     main="Regression with Perturbation: Accuracy of kNN with repeated 10-fold CV",
+     xlab="Number of neighbors",
+     ylab="Accuracy of classification")
+```
+
+KNN vs Removed missing data points
+```{r}
+df1.removed<-na.omit(df1)
+knn.removed <- train(x=df1.removed[,1:10],y=as.factor(df1.removed[,11]), method = "knn", trControl = ctrl, 
+                        preProcess = c("center","scale"), tuneLength = 10)
+
+plot(knn.removed,col = "dark red",lwd=5,lty=2,cex.lab=1.25,cex.main=1.5,
+     main="Missing values removed: Accuracy of kNN with repeated 10-fold CV",
+     xlab="Number of neighbors",
+     ylab="Accuracy of classification")
+```
+
+Using 10-fold cross-validation, the accuracies were as follows:
+
+On average, KNN accuracies were consistently high across different methods, reaching slightly over 90% overall.
+
+However, the optimal number of K neighbors varied by method:
+
+Mean approach: 5 K neighbors
+Regular regression approach: 20 K neighbors
+Perturbed regression approach: 19 K neighbors
+Missing approach: 19 K neighbors
+
+
+Summary
+
+The "Bare_Nuclei" column contained 16 missing values, accounting for just 2.3% of the entire dataset, which is below the 5% threshold, making imputation acceptable.
+
+The mean value for Bare Nuclei was calculated as 3.54.
+
+An initial linear regression with all predictors showed multiple insignificant predictors.
+
+Stepwise regression in both directions reduced the number of predictors, achieving an RMSE of 2.278 and an R-Squared of 0.618.
+
+Imputation methods—including mean, missing, and perturbed regression—were compared using KNN. Results indicated high accuracy across methods, mostly in the 90% range. Regular regression and perturbed regression showed optimal K values around 20, while mean imputation achieved optimal results with a lower K of 5 neighbors.
+
+Based on these findings, mean imputation appears favorable for simplicity and effectiveness, particularly given the low percentage of missing values. The key takeaway is that with a small proportion of missing data, straightforward methods like mean imputation are often best.
+
+
+Question 15.1
+
+Describe a situation or problem from your job, everyday life, current events, etc., for which optimization would be appropriate. What data would you need?
+
+One situation where optimization would be beneficial is in planning an efficient daily workout routine. The goal would be to maximize both fitness gains and time management by deciding the optimal duration and type of exercises each day.
+
+To approach this, I’d need data on factors like workout times, types of exercises, and their impact on muscle groups, along with information about recovery times and energy levels throughout the week. With these data points, I could set constraints (like available time each day and necessary rest periods) and use an optimization model to create a balanced workout schedule that fits well with my other daily activities.
