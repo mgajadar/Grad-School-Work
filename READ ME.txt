@@ -1,0 +1,43 @@
+Included: 
+
+1. PDF Report
+
+2. Code files in a Jupiter NB file
+
+Cell 1:
+Generates 2D samples using:
+
+	-Pseudo-random numbers (np.random.rand)
+
+	-Halton sequence
+
+	-Sobol sequence
+Then plots and saves a side-by-side visual comparison of the three sample distributions.
+
+Cell 2:
+Performs numerical integration using both MC and QMC methods.
+Calculates estimated values and absolute errors for each sample size and prints a performance table.
+
+Cell 3:
+Plots convergence of absolute error from Cell 2.
+Displays and saves a log-log plot comparing MC and QMC integration performance (Figure 1 in the report).
+
+Cell 4:
+Simulates European call option pricing using both Monte Carlo and Quasi-Monte Carlo methods under the Black-Scholes model.
+Stores pricing estimates and absolute errors for each sample size.
+
+Cell 5:
+Plots the convergence of absolute error in option pricing using the data from Cell 4.
+Saves this figure as Figure 2 for the report.
+
+Cell 6:
+Prints a formatted results table for option pricing estimates and errors (MC vs. QMC), which is used in Table 2 of the report.
+
+
+NOTES**********
+Random seed is set via np.random.seed(42) for reproducibility.
+
+All plots are saved using plt.savefig and labeled for insertion into the PDF report.
+
+Output from Cells 2 and 6 was used to manually construct Table 1 and Table 2 in the final document.
+
